@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="A live model of how Ramadan reshapes electricity demand: drag the year and the forecast follows sunset and dawn.">
+<title>Crescent Curve Simulator</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&family=Poppins:wght@600&display=swap">
+<style>
+/* Layout: one stage screen. Year and place on top; one big chart (demand, or the solar grid) beside a rail with the Sun's path and the storage numbers. */
+:root{
+  --bg:#0c1633; --panel:#111d42; --line:#26345f; --grid:#1d2b57;
+  --ink:#f6efe6; --ink2:#b7c2df; --ink3:#8a97bd;
+  --accent:#f6a623; --cool:#8fa3e6; --fast:rgba(246,239,230,.055);
+  --display:'Poppins','Segoe UI',system-ui,sans-serif; --text:'Manrope','Segoe UI',system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--text);font-size:16px;line-height:1.45;font-variant-numeric:tabular-nums}
+.wrap{max-width:1680px;margin:0 auto;padding-block:18px 24px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(24px,2.6vw,38px);letter-spacing:-.02em;line-height:1.15;margin:0;text-wrap:balance}
+h1 span{background:var(--accent);color:var(--bg);border-radius:10px;padding:0 .28em .06em}
+h2{font-family:var(--display);font-weight:600;font-size:clamp(17px,1.5vw,23px);letter-spacing:-.01em;line-height:1.2;margin:0;text-wrap:balance}
+p{margin:0}
+.top{display:flex;flex-wrap:wrap;gap:6px 24px;align-items:baseline;justify-content:space-between}
+.lede{color:var(--ink2);font-size:clamp(14px,1.15vw,17px)}
+.team{color:var(--ink3);font-size:14px}
+
+.controls{background:var(--panel);border-radius:16px;padding:14px 20px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px 28px;align-items:center}
+.year{display:flex;align-items:center;gap:16px;min-width:0}
+.yr{font-family:var(--display);font-weight:600;font-size:clamp(44px,4.6vw,72px);letter-spacing:-.04em;line-height:1;color:var(--accent);min-width:2.5em}
+.when{min-width:0}
+.when b{display:block;font-weight:700;font-size:clamp(15px,1.3vw,19px);white-space:nowrap}
+.sub{color:var(--ink3);font-size:14px}
+.slider{min-width:0;position:relative;padding-bottom:20px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:transparent;margin:0;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:8px;border-radius:4px;background:var(--line)}
+input[type=range]::-moz-range-track{height:8px;border-radius:4px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:26px;height:26px;border-radius:50%;background:var(--accent);border:4px solid var(--panel);margin-top:-9px}
+input[type=range]::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:var(--accent);border:4px solid var(--panel)}
+input[type=range]:focus-visible{outline:2px solid var(--ink);outline-offset:4px;border-radius:6px}
+.ticks{position:absolute;left:13px;right:13px;bottom:0;height:18px;color:var(--ink3);font-size:13px}
+.ticks span{position:absolute;transform:translateX(-50%);white-space:nowrap}
+.btn{font:inherit;font-weight:700;color:var(--bg);background:var(--accent);border:0;border-radius:999px;padding:12px 22px;cursor:pointer;white-space:nowrap}
+.btn:focus-visible,.chip:focus-visible{outline:2px solid var(--ink);outline-offset:3px}
+.cities{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.lab{color:var(--ink3);font-size:14px;margin-right:4px}
+.chip{font:inherit;font-weight:600;font-size:15px;color:var(--ink2);background:transparent;border:1.5px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+
+.grid{display:grid;grid-template-columns:minmax(0,8fr) minmax(0,4fr);gap:14px;align-items:start}
+.rail{display:grid;gap:14px;min-width:0}
+.panel{background:var(--panel);border-radius:16px;padding:16px 20px;min-width:0;display:flex;flex-direction:column;gap:10px}
+.head{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;justify-content:space-between}
+.seg{display:flex;gap:6px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;color:var(--ink2);font-size:14px}
+.legend i{display:inline-block;width:22px;height:0;border-top:3px solid var(--accent);vertical-align:middle;margin-right:7px}
+.legend i.c{border-top:3px dashed var(--cool)} .legend i.o{border-top:2px solid var(--ink)} .legend i.n{border-top:3px solid var(--cool)}
+.chart{position:relative;min-width:0}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.tip{position:absolute;pointer-events:none;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px;line-height:1.5;color:var(--ink2);white-space:nowrap;transform:translateX(-50%)}
+.tip b{color:var(--ink)}
+.say{color:var(--ink2);font-size:clamp(14px,1.2vw,18px);min-height:3em}
+.say b{color:var(--ink)}
+.read{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.read div{border-top:2px solid var(--line);padding-top:8px;min-width:0}
+.read b{display:block;font-family:var(--display);font-weight:600;font-size:clamp(20px,1.9vw,30px);letter-spacing:-.03em;line-height:1.15}
+.read span{color:var(--ink3);font-size:13px}
+.solar{display:grid;gap:2px}
+.solar label{display:flex;justify-content:space-between;gap:12px;color:var(--ink2);font-size:15px}
+.solar label b{color:var(--ink)}
+.stats{display:grid;gap:10px}
+.stat{border-top:2px solid var(--line);padding-top:8px}
+.stat b{font-family:var(--display);font-weight:600;font-size:clamp(24px,2.3vw,38px);letter-spacing:-.03em;line-height:1.1;color:var(--accent)}
+.stat span{display:block;color:var(--ink2);font-size:14px}
+.tag{color:var(--ink3);font-size:13px}
+.foot{color:var(--ink3);font-size:13px;max-width:130ch}
+@media (max-width:1000px){ .grid{grid-template-columns:minmax(0,1fr)} .controls{grid-template-columns:minmax(0,1fr)} .btn{justify-self:start} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>The Crescent Curve, <span>live.</span></h1>
+    <p class="lede">Drag the year. Ramadan moves through the seasons, and the forecast follows the Sun.</p>
+    <div class="team">Team Simer · Carnot 2026</div>
+  </header>
+
+  <section class="controls" aria-label="Year and place">
+    <div class="year">
+      <div class="yr" id="yr">2026</div>
+      <div class="when"><b id="dates">18 Feb to 19 Mar</b><span class="sub" id="hijri">Ramadan 1447 AH</span></div>
+    </div>
+    <div class="slider">
+      <input type="range" id="year" min="1437" max="1470" step="1" value="1447" aria-label="Ramadan year">
+      <div class="ticks" id="ticks"></div>
+    </div>
+    <button class="btn" id="play" type="button">Play 33 years</button>
+    <div class="cities" id="cities" role="group" aria-label="Place"><span class="lab">Under the sky of</span></div>
+  </section>
+
+  <section class="grid">
+    <div class="panel">
+      <div class="head">
+        <div class="seg" role="group" aria-label="View">
+          <button class="chip" id="vDemand" type="button" aria-pressed="true">Demand</button>
+          <button class="chip" id="vSolar" type="button" aria-pressed="false">Solar grid</button>
+        </div>
+        <div class="legend" id="lg1"></div>
+      </div>
+      <h2 id="h2main">What Ramadan does to demand, hour by hour</h2>
+      <div class="chart" id="c1"></div>
+      <p class="say" id="say1"></p>
+    </div>
+
+    <div class="rail">
+      <div class="panel">
+        <h2 id="h2sun">The Sun over Türkiye</h2>
+        <div class="chart" id="c2"></div>
+        <div class="read">
+          <div><b id="rDawn">05:46</b><span>dawn, the fast begins</span></div>
+          <div><b id="rSun">18:45</b><span>sunset, iftar</span></div>
+          <div><b id="rLen">13.0 h</b><span>length of the fast</span></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="solar">
+          <label for="share"><span>Share of energy from solar</span><b id="shareV">30%</b></label>
+          <input type="range" id="share" min="0" max="60" step="1" value="30">
+        </div>
+        <div class="stats">
+          <div class="stat"><b id="sStore">+9.7 GWh</b><span id="sStoreL">more storage needed each day to flatten the curve</span></div>
+          <div class="stat"><b id="sPeak">1 hour later</b><span>when the evening peak arrives</span></div>
+          <div class="stat"><b id="sRamp">+0.9 GW</b><span>change in the steepest three-hour ramp</span></div>
+        </div>
+        <p class="tag" id="tag"></p>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+// ---------------------------------------------------------------- data from the submission (results.json, arrays.npz)
+const D = {"tau":[-6.0,-5.5,-5.0,-4.5,-4.0,-3.5,-3.0,-2.5,-2.0,-1.5,-1.0,-0.5,0.0,0.5,1.0,1.5,2.0,2.5,3.0,3.5,4.0,4.5,5.0,5.5,6.0,6.5,7.0,7.5,8.0,8.5,9.0,9.5,10.0,10.5,11.0,11.5,12.0],"Ks":[0.0,-0.00482,-0.00897,-0.0114,-0.01254,-0.01394,-0.0157,-0.0165,-0.0144,-0.0086,-0.00493,-0.01343,-0.03124,-0.04119,-0.03441,-0.02067,-0.01259,-0.01134,-0.0116,-0.00949,-0.00465,0.0009,0.00451,0.0048,0.0029,0.00035,-0.00146,-0.001,0.00183,0.00617,0.01171,0.01775,0.02179,0.02144,0.01713,0.01003,0.0],"Kd":[0.0,0.00229,0.00566,0.00994,0.01438,0.01867,0.02315,0.02916,0.03833,0.04903,0.05687,0.05847,0.05232,0.03769,0.01493,-0.01108,-0.03214,-0.04419,-0.04981,-0.05324,-0.05591,-0.05702,-0.05643,-0.05472,-0.05187,-0.04806,-0.04407,-0.04074,-0.03782,-0.03405,-0.02929,-0.02501,-0.02177,-0.01941,-0.01748,-0.0125,0.0],"clock":[0.03071,0.04448,0.05525,0.06128,0.05529,0.03247,0.00048,-0.02692,-0.04055,-0.04305,-0.03937,-0.03268,-0.02351,-0.0191,-0.01535,-0.01166,-0.00912,-0.00487,0.0017,-0.00716,-0.01693,-0.00906,0.0028,0.01488],"obs":{"2016":[0.04071,0.06086,0.06471,0.05428,0.0204,-0.00842,-0.01711,-0.03733,-0.04122,-0.04027,-0.03621,-0.02935,-0.00555,-0.00682,-0.00267,-0.00252,-0.00175,-0.00045,0.00892,0.0132,-0.03944,-0.02283,0.00713,0.02173],"2017":[0.03257,0.05132,0.05994,0.04834,0.02201,-0.00487,-0.01017,-0.02868,-0.03813,-0.03445,-0.02596,-0.02029,-0.0116,-0.00983,-0.00625,-0.00714,-0.00557,-0.00107,0.00944,0.0118,-0.0364,-0.01217,0.00411,0.01304],"2018":[0.03084,0.04834,0.05817,0.05231,0.03098,0.00046,-0.01024,-0.02795,-0.03859,-0.03865,-0.03401,-0.02831,-0.0178,-0.01107,-0.00149,0.00295,0.00206,0.00458,0.01157,0.00526,-0.03806,-0.01099,0.00016,0.00948],"2019":[0.03549,0.05135,0.07382,0.06829,0.04822,0.002,-0.02162,-0.02814,-0.03975,-0.03901,-0.03741,-0.03592,-0.03174,-0.02679,-0.01899,-0.01192,-0.00545,-0.00248,0.01212,0.01148,-0.02433,-0.00042,0.00587,0.01535],"2022":[0.03317,0.04316,0.05772,0.08127,0.08291,0.0537,-0.01178,-0.03099,-0.03937,-0.0441,-0.03963,-0.0361,-0.02768,-0.02372,-0.0217,-0.01576,-0.0197,-0.01948,-0.00376,-0.01912,-0.01894,-0.00366,0.00631,0.01724],"2023":[0.02087,0.02948,0.03905,0.06759,0.0798,0.06085,0.00211,-0.03128,-0.04275,-0.0455,-0.04013,-0.03052,-0.01614,-0.01694,-0.01489,-0.0086,-0.00969,-0.00913,0.00234,-0.02738,-0.01332,-0.00527,0.00151,0.00796],"2024":[0.03157,0.03738,0.04375,0.06448,0.08544,0.07649,0.02556,-0.02891,-0.05136,-0.0533,-0.04878,-0.04232,-0.02798,-0.0252,-0.02178,-0.01726,-0.01539,-0.01319,0.00738,-0.02668,-0.00511,-0.00567,0.00127,0.00961],"2025":[0.02601,0.03356,0.03982,0.05659,0.08499,0.08352,0.04027,-0.01521,-0.03541,-0.04662,-0.0495,-0.0458,-0.03712,-0.03642,-0.03676,-0.02845,-0.01954,-0.01782,0.0017,-0.02,0.00375,-0.00032,0.00429,0.01447],"2026":[0.02019,0.023,0.02557,0.03661,0.07016,0.08189,0.04949,0.00159,-0.0245,-0.03482,-0.04233,-0.04101,-0.02936,-0.03073,-0.03135,-0.02583,-0.02387,-0.01985,-0.00545,-0.02534,0.00514,-0.002,0.00599,0.01683]},"level":{"2016":0.0116,"2017":-0.0769,"2018":-0.0615,"2019":-0.016,"2022":-0.0298,"2023":-0.0172,"2024":-0.0226,"2025":-0.0335,"2026":0.0191},"base":[0.92956,0.8813,0.84542,0.82254,0.81345,0.82039,0.83673,0.87883,0.99533,1.05833,1.08851,1.10746,1.07847,1.08115,1.09425,1.0864,1.09196,1.09928,1.10207,1.11371,1.10181,1.0692,1.02616,0.9777],"meanLoadGW":39.93};
+const CITIES = [
+  {id:'tr', name:'Türkiye',   lat:39.25, lon:33.00,  tz:3, spread:1.0, fitted:true},
+  {id:'ad', name:'Abu Dhabi', lat:24.45, lon:54.38,  tz:4, spread:0},
+  {id:'ry', name:'Riyadh',    lat:24.71, lon:46.68,  tz:3, spread:0},
+  {id:'kh', name:'Karachi',   lat:24.86, lon:67.00,  tz:5, spread:0},
+  {id:'dh', name:'Dhaka',     lat:23.81, lon:90.41,  tz:6, spread:0},
+  {id:'jk', name:'Jakarta',   lat:-6.20, lon:106.85, tz:7, spread:0}
+];
+const H0 = 1437, H1 = 1470;
+// Türkiye, the years in the data: the dates the fast was actually kept (Diyanet) and the population-weighted mean dawn and sunset
+const TR = { 1437:['2016-06-06','2016-07-04',3.37,20.29], 1438:['2017-05-27','2017-06-24',3.39,20.23], 1439:['2018-05-16','2018-06-14',3.49,20.13], 1440:['2019-05-06','2019-06-03',3.69,19.98],
+  1441:['2020-04-24','2020-05-23'], 1442:['2021-04-13','2021-05-12'], 1443:['2022-04-02','2022-05-01',4.57,19.45], 1444:['2023-03-23','2023-04-20',4.88,19.28],
+  1445:['2024-03-11','2024-04-09',5.20,19.10], 1446:['2025-03-01','2025-03-29',5.50,18.92], 1447:['2026-02-19','2026-03-19',5.77,18.75] };
+const dayOf = iso => Date.parse(iso + 'T00:00:00Z') / 864e5;
+
+// ---------------------------------------------------------------- astronomy (Astronomical Almanac low-precision formulas, as in the submission)
+const rad = Math.PI / 180, mod = (a, n) => ((a % n) + n) % n;
+function sunCoords(jd){
+  const n = jd - 2451545.0, L = mod(280.460 + 0.9856474 * n, 360), g = mod(357.528 + 0.9856003 * n, 360) * rad;
+  const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * rad, eps = (23.439 - 0.0000004 * n) * rad;
+  const alpha = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam)) / rad, delta = Math.asin(Math.sin(eps) * Math.sin(lam)) / rad;
+  return [delta, 4 * (mod(L - alpha + 180, 360) - 180)];
+}
+function eventUTC(day, lat, lon, alt, evening){
+  const jd0 = day + 2440587.5, sg = evening ? 1 : -1; let t = 12 - lon / 15 + sg * 6;
+  for (let i = 0; i < 3; i++){
+    const [dec, eot] = sunCoords(jd0 + t / 24);
+    const c = (Math.sin(alt * rad) - Math.sin(lat * rad) * Math.sin(dec * rad)) / (Math.cos(lat * rad) * Math.cos(dec * rad));
+    if (Math.abs(c) > 1) return NaN;
+    t = 12 - lon / 15 - eot / 60 + sg * Math.acos(c) / rad / 15;
+  }
+  return t;
+}
+function elevation(jd, lat, lon){
+  const [dec, eot] = sunCoords(jd), f = jd + 0.5, utc = (f - Math.floor(f)) * 24, om = (15 * (utc - 12) + lon + eot / 4) * rad;
+  const s = Math.sin(lat * rad) * Math.sin(dec * rad) + Math.cos(lat * rad) * Math.cos(dec * rad) * Math.cos(om);
+  return Math.asin(Math.max(-1, Math.min(1, s))) / rad;
+}
+// tabular Islamic calendar: day number (days since 1970-01-01) of 1 Ramadan and of the last fasting day
+const islamicDay = (y, m, d) => Math.floor(d + Math.ceil(29.5 * (m - 1)) + (y - 1) * 354 + Math.floor((3 + 11 * y) / 30) + 1948439.5 - 1 - 2440587.5);
+const ramStart = h => islamicDay(h, 9, 1), ramEnd = h => islamicDay(h, 10, 1) - 1;
+
+// ---------------------------------------------------------------- the model
+function kern(K, x){ if (x <= -6 || x >= 12) return 0; const i = (x + 6) * 2, j = Math.floor(i), f = i - j; return K[j] + (K[j + 1] - K[j]) * f; }
+function skyProfile(s, f, spread){
+  const n = 12, offs = spread > 0 ? [-3,-2,-1,0,1,2,3].map(v => v / 6 * spread) : [0], out = new Array(24).fill(0);
+  for (let k = 0; k < 24; k++){ let a = 0;
+    for (let q = 0; q < n; q++){ const t = k + (q + 0.5) / n;
+      for (const o of offs) for (const sh of [-24, 0, 24]) a += kern(D.Ks, t - (s + o + sh)) + kern(D.Kd, t - (f + o + sh)); }
+    out[k] = a / n / offs.length; }
+  const m = out.reduce((p, c) => p + c, 0) / 24; return out.map(v => v - m);
+}
+function clearSkyPV(day, c){   // per-unit clear-sky output of a fixed horizontal panel, hourly means in local time (as in the submission's Türkiye scenario)
+  const out = new Array(24).fill(0), n = 12;
+  for (let k = 0; k < 24; k++){ let a = 0;
+    for (let q = 0; q < n; q++){ const t = k + (q + 0.5) / n, el = elevation(day + 2440587.5 + (t - c.tz) / 24, c.lat, c.lon);
+      if (el <= 0) continue;
+      const z = (90 - el) * rad, am = 1 / (Math.cos(z) + 0.50572 * Math.pow(96.07995 - (90 - el), -1.6364)), dni = 1361 * Math.pow(0.7, Math.pow(am, 0.678));
+      a += 1.1 * dni * Math.sin(el * rad) / 1000; }
+    out[k] = a / n; }
+  return out;
+}
+const flatten = x => { const m = x.reduce((p, c) => p + c, 0) / x.length; let c = 0, lo = Infinity, hi = -Infinity; for (const v of x){ c += v - m; lo = Math.min(lo, c); hi = Math.max(hi, c); } return hi - lo; };
+const ramp = (x, h) => Math.max(...x.map((v, i) => x[(i + h) % 24] - v));
+const argmax = (x, a = 0, b = x.length) => { let j = a; for (let i = a; i < b; i++) if (x[i] > x[j]) j = i; return j; };
+const r2 = (o, p) => 1 - o.reduce((s, v, i) => s + (v - p[i]) ** 2, 0) / o.reduce((s, v) => s + v * v, 0);
+
+// ---------------------------------------------------------------- state
+const S = { x: 1447, city: CITIES[0], share: 30, view: 'demand', playing: false, hover: null };
+const $ = id => document.getElementById(id);
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const dstr = day => { const d = new Date(Math.round(day) * 864e5); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()]; };
+const yearOf = day => new Date(Math.round(day) * 864e5).getUTCFullYear();
+const hm = t => { t = mod(t, 24); let h = Math.floor(t), m = Math.round((t - h) * 60); if (m === 60){ h = (h + 1) % 24; m = 0; } return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); };
+const sgn = (v, d = 1) => (v < 0 ? '−' : '+') + Math.abs(v).toFixed(d);
+const h2 = k => String(mod(k, 24)).padStart(2, '0') + ':00';
+
+function compute(){
+  const h = Math.min(Math.floor(S.x), H1 - 1), f = S.x - h, c = S.city;
+  const whole = Math.abs(f) < 1e-6, known = c.fitted && whole ? TR[h] : null;
+  const start = known ? dayOf(known[0]) : ramStart(h) + (ramStart(h + 1) - ramStart(h)) * f, end = known ? dayOf(known[1]) : ramEnd(h) + (ramEnd(h + 1) - ramEnd(h)) * f, mid = start + 14;
+  const sunset = known && known[3] ? known[3] : mod(eventUTC(mid, c.lat, c.lon, -0.833, true) + c.tz, 24), dawn = known && known[2] ? known[2] : mod(eventUTC(mid, c.lat, c.lon, -18, false) + c.tz, 24);
+  const sky = skyProfile(sunset, dawn, c.spread);
+  const yr = String(yearOf(ramStart(h))), obs = c.fitted && whole && D.obs[yr] ? D.obs[yr] : null;
+  const pv = clearSkyPV(mid, c), baseSum = D.base.reduce((p, v) => p + v, 0), pvSum = pv.reduce((p, v) => p + v, 0), k = S.share / 100 * baseSum / pvSum, g = D.meanLoadGW;
+  const netN = D.base.map((b, i) => (b - k * pv[i]) * g);
+  // measured Ramadan load where the data exists (as in the report); otherwise the sky model's curve with the same daily energy
+  const netR = D.base.map((b, i) => (b * (1 + (obs ? D.level[yr] + obs[i] : sky[i])) - k * pv[i]) * g);
+  return { h, start, end, mid, sunset, dawn, sky, obs, netN, netR, whole };
+}
+
+// ---------------------------------------------------------------- drawing
+const smooth = pts => { let d = 'M' + pts[0][0].toFixed(1) + ' ' + pts[0][1].toFixed(1);
+  for (let i = 0; i < pts.length - 1; i++){ const p0 = pts[Math.max(i - 1, 0)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(i + 2, pts.length - 1)];
+    d += ' C' + (p1[0] + (p2[0] - p0[0]) / 6).toFixed(1) + ' ' + (p1[1] + (p2[1] - p0[1]) / 6).toFixed(1) + ' ' + (p2[0] - (p3[0] - p1[0]) / 6).toFixed(1) + ' ' + (p2[1] - (p3[1] - p1[1]) / 6).toFixed(1) + ' ' + p2[0].toFixed(1) + ' ' + p2[1].toFixed(1); }
+  return d; };
+const hourly = (v, x, y) => { const p = []; for (let k = -1; k <= 24; k++) p.push([x(k + 0.5), y(v[mod(k, 24)])]); return p; };
+const T = (x, y, s, o = {}) => `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" fill="${o.c || 'var(--ink3)'}" font-size="${o.fs || 14}" font-weight="600" text-anchor="${o.a || 'start'}" font-family="var(--text)">${s}</text>`;
+const hours = (x, H) => [0, 6, 12, 18, 24].map(hh => T(x(hh), H - 8, h2(hh === 24 ? 0 : hh).replace('00:00', hh === 24 ? '24:00' : '00:00'), {a: hh === 0 ? 'start' : hh === 24 ? 'end' : 'middle'})).join('');
+function bigFrame(el){ const W = Math.max(el.clientWidth, 280); return [W, Math.round(Math.min(Math.max(W * 0.5, 250), Math.max(300, window.innerHeight - 450)))]; }
+
+function drawDemand(st){
+  const el = $('c1'), [W, H] = bigFrame(el), m = {l: 50, r: 14, t: 34, b: 30}, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const x = h => m.l + h / 24 * pw, y = v => m.t + (0.10 - v) / 0.18 * ph;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Change in demand by clock hour"><defs><clipPath id="cp1"><rect x="${m.l}" y="${m.t - 6}" width="${pw}" height="${ph + 12}"/></clipPath></defs>`;
+  if (st.dawn < st.sunset) s += `<rect x="${x(st.dawn)}" y="${m.t}" width="${x(st.sunset) - x(st.dawn)}" height="${ph}" fill="var(--fast)"/>`;
+  for (const v of [0.05, 0, -0.05]) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="${v ? 'var(--grid)' : 'var(--line)'}" stroke-width="${v ? 1 : 1.5}"/>` + T(m.l - 8, y(v) + 5, v ? sgn(v * 100, 0) + '%' : '0', {a: 'end'});
+  s += hours(x, H);
+  for (const [t, lab, a] of [[st.dawn, 'dawn ' + hm(st.dawn), 'end'], [st.sunset, 'sunset ' + hm(st.sunset), 'start']])
+    s += `<line x1="${x(t)}" x2="${x(t)}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--accent)" stroke-width="1.5" stroke-dasharray="4 5"/>` + T(x(t) + (a === 'end' ? -7 : 7), m.t - 12, lab, {a, c: 'var(--ink2)'});
+  s += `<g clip-path="url(#cp1)" fill="none" stroke-linecap="round" stroke-linejoin="round">`;
+  if (S.city.fitted) s += `<path d="${smooth(hourly(D.clock, x, y))}" stroke="var(--cool)" stroke-width="2.5" stroke-dasharray="7 7"/>`;
+  if (st.obs) s += `<path d="${smooth(hourly(st.obs, x, y))}" stroke="var(--ink)" stroke-width="2"/>`;
+  s += `<path d="${smooth(hourly(st.sky, x, y))}" stroke="var(--accent)" stroke-width="4"/></g>`;
+  let tip = '';
+  if (S.hover !== null){ const k = S.hover, cx = x(k + 0.5);
+    s += `<line x1="${cx}" x2="${cx}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--ink3)" stroke-width="1"/>`;
+    if (S.city.fitted) s += `<circle cx="${cx}" cy="${y(D.clock[k])}" r="5" fill="var(--cool)" stroke="var(--panel)" stroke-width="2"/>`;
+    if (st.obs) s += `<circle cx="${cx}" cy="${y(st.obs[k])}" r="5" fill="var(--ink)" stroke="var(--panel)" stroke-width="2"/>`;
+    s += `<circle cx="${cx}" cy="${y(st.sky[k])}" r="6" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>`;
+    tip = `<b>${h2(k)} to ${h2(k + 1)}</b><br>sky model ${sgn(st.sky[k] * 100)}%` + (S.city.fitted ? `<br>clock model ${sgn(D.clock[k] * 100)}%` : '') + (st.obs ? `<br>what happened ${sgn(st.obs[k] * 100)}%` : '');
+    tip = `<div class="tip" style="left:${Math.min(Math.max(cx, 96), W - 96)}px;top:${m.t + ph - 96}px">${tip}</div>`; }
+  el.innerHTML = s + `</svg>` + tip; el._x = [m.l, pw];
+}
+
+function drawNet(st){
+  const el = $('c1'), [W, H] = bigFrame(el), m = {l: 50, r: 14, t: 16, b: 30}, pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const top = 50, lo = Math.min(0, Math.floor(Math.min(...st.netN, ...st.netR) / 15) * 15);
+  const x = h => m.l + h / 24 * pw, y = v => m.t + (top - v) / (top - lo) * ph;
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Net load after solar"><defs><clipPath id="cp3"><rect x="${m.l}" y="${m.t - 6}" width="${pw}" height="${ph + 12}"/></clipPath></defs>`;
+  for (let v = lo; v <= 45; v += 15) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="${v ? 'var(--grid)' : 'var(--line)'}" stroke-width="${v ? 1 : 1.5}"/>` + T(m.l - 8, y(v) + 5, String(v).replace('-', '−'), {a: 'end'});
+  s += T(m.l + 6, y(45) - 8, 'GW') + hours(x, H);
+  const pn = hourly(st.netN, x, y), pr = hourly(st.netR, x, y);
+  s += `<g clip-path="url(#cp3)" stroke-linecap="round" stroke-linejoin="round"><path d="${smooth(pr)} L${pn.slice().reverse().map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L')} Z" fill="var(--accent)" fill-opacity=".18" stroke="none"/>`;
+  s += `<path d="${smooth(pn)}" fill="none" stroke="var(--cool)" stroke-width="2.5"/><path d="${smooth(pr)}" fill="none" stroke="var(--accent)" stroke-width="4"/></g>`;
+  let tip = '';
+  if (S.hover !== null){ const k = S.hover, cx = x(k + 0.5);
+    s += `<line x1="${cx}" x2="${cx}" y1="${m.t}" y2="${m.t + ph}" stroke="var(--ink3)" stroke-width="1"/><circle cx="${cx}" cy="${y(st.netN[k])}" r="5" fill="var(--cool)" stroke="var(--panel)" stroke-width="2"/><circle cx="${cx}" cy="${y(st.netR[k])}" r="6" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>`;
+    tip = `<div class="tip" style="left:${Math.min(Math.max(cx, 96), W - 96)}px;top:${m.t + 8}px"><b>${h2(k)} to ${h2(k + 1)}</b><br>Ramadan ${st.netR[k].toFixed(1)} GW<br>normal weeks ${st.netN[k].toFixed(1)} GW</div>`; }
+  el.innerHTML = s + `</svg>` + tip; el._x = [m.l, pw];
+}
+
+function drawSun(st){
+  const el = $('c2'), W = Math.max(el.clientWidth, 240), H = Math.max(Math.round(W * 0.40), 160), m = {l: 6, r: 6, t: 12, b: 22}, pw = W - m.l - m.r, ph = H - m.t - m.b, c = S.city;
+  const alt = t => elevation(st.mid + 2440587.5 + (t - c.tz) / 24, c.lat, c.lon);
+  const x = t => m.l + t / 24 * pw, y = a => m.t + (92 - a) / 172 * ph;
+  const seg = (a, b) => { const p = [], n = Math.max(Math.round((b - a) / 0.2), 1); for (let i = 0; i <= n; i++){ const t = a + (b - a) * i / n; p.push(x(t).toFixed(1) + ' ' + y(alt(t)).toFixed(1)); } return 'M' + p.join(' L'); };
+  let noon = 12, best = -99; for (let t = 9; t <= 15; t += 0.05){ const a = alt(t); if (a > best){ best = a; noon = t; } }
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="The Sun's height through the day">`;
+  s += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line)" stroke-width="1.5"/>` + T(W - m.r, y(0) + 18, 'horizon', {a: 'end', fs: 13});
+  s += `<path d="${seg(0, st.dawn)}" fill="none" stroke="var(--ink3)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="1 9"/><path d="${seg(st.sunset, 24)}" fill="none" stroke="var(--ink3)" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="1 9"/>`;
+  s += `<path d="${seg(st.dawn, st.sunset)}" fill="none" stroke="var(--accent)" stroke-width="4.5" stroke-linecap="round"/>`;
+  s += `<circle cx="${x(noon)}" cy="${y(best)}" r="11" fill="var(--accent)" stroke="var(--panel)" stroke-width="5"/>`;
+  for (const t of [st.dawn, st.sunset]) s += `<circle cx="${x(t)}" cy="${y(alt(t))}" r="7" fill="var(--panel)" stroke="var(--accent)" stroke-width="3.5"/>`;
+  s += T(x(noon), y(0) - 12, 'the fast', {a: 'middle', c: 'var(--ink2)'});
+  el.innerHTML = s + `</svg>`;
+}
+
+function render(){
+  const st = compute(), c = S.city, demand = S.view === 'demand';
+  $('yr').textContent = yearOf(st.start);
+  const twoYears = yearOf(st.end) !== yearOf(st.start);
+  $('dates').textContent = dstr(st.start) + (twoYears ? ' ' + yearOf(st.start) : '') + ' to ' + dstr(st.end) + (twoYears ? ' ' + yearOf(st.end) : '');
+  $('hijri').textContent = 'Ramadan ' + st.h + ' AH';
+  $('h2sun').textContent = 'The Sun over ' + c.name;
+  $('rDawn').textContent = hm(st.dawn); $('rSun').textContent = hm(st.sunset); $('rLen').textContent = mod(st.sunset - st.dawn, 24).toFixed(1) + ' h';
+  $('h2main').textContent = demand ? 'What Ramadan does to demand, hour by hour' : 'What is left for other plants on a solar grid';
+  $('lg1').innerHTML = demand ? `<span><i></i>sky model</span>` + (c.fitted ? `<span><i class="c"></i>clock model</span>` : '') + (st.obs ? `<span><i class="o"></i>what happened</span>` : '')
+                              : `<span><i></i>Ramadan</span><span><i class="n"></i>normal weeks</span>`;
+  if (demand) drawDemand(st); else drawNet(st);
+  drawSun(st);
+  // solar numbers
+  const dS = flatten(st.netR) - flatten(st.netN), pS = dS / flatten(st.netN) * 100, dR = ramp(st.netR, 3) - ramp(st.netN, 3);
+  let dh = argmax(st.netR) - argmax(st.netN); if (dh > 12) dh -= 24; if (dh < -12) dh += 24;
+  $('shareV').textContent = S.share + '%';
+  $('sStore').textContent = sgn(dS) + ' GWh'; $('sStoreL').textContent = (dS >= 0 ? 'more' : 'less') + ' storage needed each day to flatten the curve (' + sgn(pS) + '%)';
+  $('sPeak').textContent = dh === 0 ? 'Same hour' : Math.abs(dh) + ' hour' + (Math.abs(dh) > 1 ? 's ' : ' ') + (dh > 0 ? 'later' : 'earlier');
+  $('sRamp').textContent = sgn(dR) + ' GW';
+  $('tag').textContent = st.obs ? 'Measured: Ramadan ' + yearOf(st.start) + ' as it happened, against its normal weeks.' : 'Forecast: the sky model’s curve, with the same daily energy as normal weeks.';
+  // the line under the big chart
+  const pk = argmax(st.sky, 0, 11), pc = argmax(D.clock, 0, 11); let say;
+  if (!demand) say = `The midday dip is solar. Ramadan adds a hump before dawn and pushes the evening peak later, so the curve bends into a <b>crescent</b>. Drag the solar share to see it deepen.`;
+  else if (c.fitted){ const d = pk - pc;
+    say = `Pre-dawn peak: the sky model puts it at <b>${h2(pk)}</b>, the clock model at <b>${h2(pc)}</b>. ` + (d === 0 ? 'This year they agree.' : `The clock model is <b>${Math.abs(d)} hour${Math.abs(d) > 1 ? 's' : ''} ${d > 0 ? 'early' : 'late'}</b>.`);
+    if (st.obs) say += ` Match to what happened: sky model <b>${r2(st.obs, st.sky).toFixed(2)}</b>, clock model <b>${r2(st.obs, D.clock).toFixed(2)}</b>.`;
+    else if (st.whole) say += yearOf(st.start) > 2026 ? ' No data exists for this year yet: this is a forecast from astronomy alone.' : ' This year was set aside because of COVID curfews.';
+  } else say = `A what-if: Türkiye’s two fitted curves, placed at ${c.name}’s own dawn and sunset. The pre-dawn peak lands at <b>${h2(pk)}</b>. No hourly data is public for this grid, so this is an illustration, not a fit.`;
+  $('say1').innerHTML = say;
+  $('foot').textContent = 'How it works: sunset and dawn are computed for the middle of each Ramadan, the two curves fitted on nine Turkish Ramadans (2016 to 2026) are placed at those times, and the result is averaged into clock hours. The clock model is one number per clock hour, fitted on 2016 to 2025. The solar numbers use Türkiye’s 2026 load shape (' + D.meanLoadGW.toFixed(0) + ' GW average), a clear-sky solar profile for the chosen place and date, and ideal storage. The out-of-sample test is in the report: 0.76 against 0.53 on the 2026 hold-out.';
+}
+
+// ---------------------------------------------------------------- controls
+const slider = $('year');
+slider.addEventListener('input', () => { stop(); S.x = +slider.value; render(); });
+$('share').addEventListener('input', e => { S.share = +e.target.value; render(); });
+const ticks = $('ticks'); for (const h of [1437, 1447, 1454, 1462, 1470]){ const s = document.createElement('span'); s.style.left = (h - H0) / (H1 - H0) * 100 + '%'; s.textContent = yearOf(ramStart(h)); ticks.appendChild(s); }
+const cities = $('cities');
+CITIES.forEach(c => { const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.id = 'city-' + c.id; b.textContent = c.name; b.setAttribute('aria-pressed', c === S.city);
+  b.addEventListener('click', () => { S.city = c; cities.querySelectorAll('.chip').forEach(n => n.setAttribute('aria-pressed', n === b)); render(); }); cities.appendChild(b); });
+function setView(v){ S.view = v; S.hover = null; $('vDemand').setAttribute('aria-pressed', v === 'demand'); $('vSolar').setAttribute('aria-pressed', v === 'solar'); render(); }
+$('vDemand').addEventListener('click', () => setView('demand')); $('vSolar').addEventListener('click', () => setView('solar'));
+let raf = 0, last = 0;
+function stop(){ if (!S.playing) return; S.playing = false; cancelAnimationFrame(raf); $('play').textContent = 'Play 33 years'; S.x = Math.round(S.x); slider.value = S.x; render(); }
+function tick(now){ if (!S.playing) return; const dt = Math.min((now - last) / 1000, 0.1); last = now; S.x += dt * (H1 - H0) / 16;
+  if (S.x >= H1){ S.x = H1; slider.value = H1; S.playing = false; $('play').textContent = 'Play 33 years'; render(); return; }
+  slider.value = Math.round(S.x); render(); raf = requestAnimationFrame(tick); }
+$('play').addEventListener('click', () => { if (S.playing){ stop(); return; } if (S.x >= H1 - 0.01) S.x = H0; S.playing = true; $('play').textContent = 'Pause'; last = performance.now(); raf = requestAnimationFrame(tick); });
+const c1 = $('c1');
+c1.addEventListener('pointermove', e => { if (!c1._x) return; const r = c1.getBoundingClientRect(), k = Math.floor((e.clientX - r.left - c1._x[0]) / c1._x[1] * 24), v = k >= 0 && k < 24 ? k : null; if (S.hover !== v){ S.hover = v; render(); } });
+c1.addEventListener('pointerleave', () => { if (S.hover !== null){ S.hover = null; render(); } });
+document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft'){ stop(); S.x = Math.min(H1, Math.max(H0, Math.round(S.x) + (e.key === 'ArrowRight' ? 1 : -1))); slider.value = S.x; render(); e.preventDefault(); }
+  if (e.key === ' '){ $('play').click(); e.preventDefault(); } });
+window.addEventListener('resize', render);
+render();
+</script>
+</body>
+</html>
